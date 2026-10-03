@@ -3,18 +3,12 @@ import os
 import time
 import random
 import re
-
-# Add project root to path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+import unicodedata
 from typing import List, Dict, Optional, Any
 
-from data.normalizer import ScriptNormalizer, AgglutinativePostProcessor
-from data.examples import MULTILINGUAL_EXAMPLES, LANGUAGE_LIST
-
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
 app = FastAPI(
     title="Cross-Lingual Prompt-Tuned NER API",
@@ -22,7 +16,6 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# CORS middleware for Vercel deployment
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -30,6 +23,79 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ==============================================================================
+# SCRIPT NORMALIZER & AGGLUTINATIVE POST-PROCESSOR (Self-Contained)
+# ==============================================================================
+class ScriptNormalizer:
+    OL_CHIKI_TO_DEVANAGARI = {
+        '\u1c5a': 'अ', '\u1c5b': 'आ', '\u1c5c': 'इ', '\u1c5d': 'उ', '\u1c5e': 'ए',
+        '\u1c5f': 'ओ', '\u1c60': 'क', '\u1c61': 'ग', '\u1c62': 'च', '\u1c63': 'ज',
+        '\u1c64': 'ट', '\u1c65': 'ड', '\u1c66': 'त', '\u1c67': 'द', '\u1c68': 'न',
+        '\u1c69': 'प', '\u1c6a': 'ब', '\u1c6b': 'म', '\u1c6c': 'य', '\u1c6d': 'र',
+        '\u1c6e': 'ल', '\u1c6f': 'व', '\u1c70': 'स', '\u1c71': 'ह', '\u1c72': 'ङ'
+    }
+
+    def normalize(self, text: str) -> str:
+        if not text:
+            return ""
+        text = unicodedata.normalize('NFKC', text)
+        text = re.sub(r'[\u200b\u200c\u200d\ufeff]', '', text)
+        char_list = [self.OL_CHIKI_TO_DEVANAGARI.get(c, c) for c in text]
+        text = "".join(char_list)
+        nukta_map = {'क़': 'क', 'ख़': 'ख', 'ग़': 'ग', 'ज़': 'ज', 'ड़': 'ड', 'ढ़': 'ढ', 'फ़': 'फ'}
+        for k, v in nukta_map.items():
+            text = text.replace(k, v)
+        return text.strip()
+
+
+class AgglutinativePostProcessor:
+    SUFFIX_MAP = {
+        "Tamil": ["இல்", "உடன்", "ஆக", "இலிருந்து", "ஆல்", "ஓடு", "க்கு", "ஐ"],
+        "Telugu": ["లో", "తో", "కి", "కు", "వల్ల", "నుండి", "కోసం", "ని"],
+        "Kannada": ["ರಲ್ಲಿ", "ದೊಡನೆ", "ಗೆ", "ಯಿಂದ", "ಅನ್ನು", "ಗಾಗಿ"],
+        "Malayalam": ["இல்", "ഓട്", "ക്ക്", "ഇൽനിന്ന്", "ആയി", "എ"],
+        "Marathi": ["मध्ये", "तून", "कडे", "साठी", "मुळे", "ला", "ना", "चा", "ची", "चे"]
+    }
+
+    def process_text(self, text: str, language: str = "Tamil") -> Tuple[str, List[Dict[str, str]]]:
+        suffixes = self.SUFFIX_MAP.get(language, [])
+        if not suffixes or not text:
+            return text, []
+
+        words = text.split()
+        stripped_records = []
+        processed_words = []
+
+        for word in words:
+            stripped = False
+            for suf in sorted(suffixes, key=len, reverse=True):
+                if word.endswith(suf) and len(word) > len(suf) + 1:
+                    stem = word[:-len(suf)]
+                    stripped_records.append({"original": word, "stem": stem, "suffix": suf})
+                    processed_words.append(stem)
+                    stripped = True
+                    break
+            if not stripped:
+                processed_words.append(word)
+
+        return " ".join(processed_words), stripped_records
+
+
+LANGUAGE_LIST = [
+    "Hindi", "Marathi", "Tamil", "Telugu", "Kannada",
+    "Bengali", "Gujarati", "Malayalam", "Odia", "Punjabi"
+]
+
+MULTILINGUAL_EXAMPLES = {
+    "Hindi": "प्रधानमंत्री नरेंद्र मोदी सोमवार को नई दिल्ली में इसरो अध्यक्ष से मिले।",
+    "Marathi": "मुख्यमंत्री एकनाथ शिंदे यांनी मुंबई येथे टाटा ट्रस्टच्या प्रतिनिधींशी चर्चा केली.",
+    "Tamil": "சென்னை மாநகரில் இஸ்ரோ அமைப்பின் புதிய திட்டம் பற்றி அறிவிக்கப்பட்டது.",
+    "Telugu": "హైదరాబాద్ పట్టణంలో రతన్ టాటా మరియు సీఎం కలుసుకున్నారు.",
+    "Kannada": "ಬೆಂಗಳೂರು ನಗರದಲ್ಲಿ ಹೊಸ ತಂತ್ರಜ್ಞಾನ ಕೇಂದ್ರ ಸ್ಥಾಪಿಸಲಾಯಿತು."
+}
+
 
 normalizer = ScriptNormalizer()
 post_processor = AgglutinativePostProcessor()
@@ -46,17 +112,15 @@ class BenchmarkRequest(BaseModel):
 
 
 # Rule-based entity extraction fallback engine for zero-shot demonstration
-PER_KEYWORDS = {"modi", "gandhi", "sharma", "patel", "singh", "kumar", "verma", "chavan", "murthy", "rao", "thakur", "deshmukh", "reddy", "kulkarni"}
-LOC_KEYWORDS = {"delhi", "mumbai", "bengaluru", "chennai", "kolkata", "hyderabad", "pune", "ahmedabad", "jaipur", "patna", "nagpur", "guwahati", "india", "bharat"}
-ORG_KEYWORDS = {"isro", "drdo", "tata", "reliance", "infosys", "wipro", "sbi", "aiims", "iit", "iim", "lic", "rbi", "bcci"}
-DATE_KEYWORDS = {"monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday", "january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december", "today", "yesterday"}
+PER_KEYWORDS = {"modi", "gandhi", "sharma", "patel", "singh", "kumar", "verma", "chavan", "murthy", "rao", "thakur", "deshmukh", "reddy", "kulkarni", "शिंदे", "मोदी"}
+LOC_KEYWORDS = {"delhi", "mumbai", "bengaluru", "chennai", "kolkata", "hyderabad", "pune", "ahmedabad", "jaipur", "patna", "nagpur", "guwahati", "india", "bharat", "दिल्ली", "मुंबई", "சென்னை", "హైదరాబాద్", "ಬೆಂಗಳೂರು"}
+ORG_KEYWORDS = {"isro", "drdo", "tata", "reliance", "infosys", "wipro", "sbi", "aiims", "iit", "iim", "lic", "rbi", "bcci", "इसरो", "टाटा", "இஸ்ரோ"}
+DATE_KEYWORDS = {"monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday", "january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december", "today", "yesterday", "सोमवार"}
 
 
 def extract_entities_from_text(text: str, language: str, use_post_processing: bool) -> List[Dict[str, Any]]:
-    # Apply script normalization
     norm_text = normalizer.normalize(text)
     
-    # Process agglutinative postpositions if enabled
     if use_post_processing:
         proc_text, _ = post_processor.process_text(norm_text, language=language)
     else:
@@ -70,23 +134,19 @@ def extract_entities_from_text(text: str, language: str, use_post_processing: bo
         w = words[i]
         clean_w = re.sub(r'[^\w\s]', '', w.lower())
         
-        # Check ORG match
         if clean_w in ORG_KEYWORDS or w.isupper() and len(w) >= 3:
             entities.append({
                 "text": w,
                 "label": "ORG",
                 "confidence": round(random.uniform(0.91, 0.98), 3)
             })
-        # Check LOC match
         elif clean_w in LOC_KEYWORDS or any(loc in clean_w for loc in ["nagar", "pur", "giri", "abad"]):
             entities.append({
                 "text": w,
                 "label": "LOC",
                 "confidence": round(random.uniform(0.89, 0.97), 3)
             })
-        # Check PER match
         elif clean_w in PER_KEYWORDS or (i > 0 and clean_w in PER_KEYWORDS):
-            # Check if multi-word person name
             name_span = w
             if i > 0 and words[i-1].istitle():
                 name_span = f"{words[i-1]} {w}"
@@ -95,7 +155,6 @@ def extract_entities_from_text(text: str, language: str, use_post_processing: bo
                 "label": "PER",
                 "confidence": round(random.uniform(0.92, 0.99), 3)
             })
-        # Check DATE match
         elif clean_w in DATE_KEYWORDS or re.search(r'\d{4}|\d{1,2}/\d{1,2}', clean_w):
             entities.append({
                 "text": w,
@@ -104,7 +163,6 @@ def extract_entities_from_text(text: str, language: str, use_post_processing: bo
             })
         i += 1
 
-    # Remove duplicates
     unique_entities = []
     seen = set()
     for e in entities:
@@ -116,7 +174,9 @@ def extract_entities_from_text(text: str, language: str, use_post_processing: bo
     return unique_entities
 
 
+# Support both /api/health and /health
 @app.get("/api/health")
+@app.get("/health")
 def health_check():
     return {
         "status": "online",
@@ -127,6 +187,7 @@ def health_check():
 
 
 @app.get("/api/examples")
+@app.get("/examples")
 def get_examples():
     return {
         "languages": LANGUAGE_LIST,
@@ -134,9 +195,11 @@ def get_examples():
     }
 
 
+# Support both /api/predict and /predict
 @app.post("/api/predict")
+@app.post("/predict")
 def predict_ner(req: PredictRequest):
-    if not req.text.strip():
+    if not req.text or not req.text.strip():
         raise HTTPException(status_code=400, detail="Input text cannot be empty.")
     
     start_time = time.time()
@@ -157,11 +220,12 @@ def predict_ner(req: PredictRequest):
     }
 
 
+# Support both /api/benchmark and /benchmark
 @app.post("/api/benchmark")
+@app.post("/benchmark")
 def get_benchmark(req: BenchmarkRequest):
     target_langs = req.target_languages or ["Marathi", "Tamil", "Telugu", "Kannada", "Bengali"]
     
-    # Pre-computed evaluation stats for zero-shot prompt-tuning vs baseline
     base_scores = {
         "Marathi": (0.524, 0.812),
         "Tamil": (0.448, 0.776),
