@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cross-Lingual Prompt-Tuned NER | Indigenous Indian Languages</title>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <!-- Chart.js for Interactive Benchmarks -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg-primary: #0b0f19;
+            --bg-card: rgba(22, 28, 45, 0.75);
+            --bg-card-hover: rgba(30, 38, 60, 0.85);
+            --accent-primary: #6366f1;
+            --accent-glow: rgba(99, 102, 241, 0.4);
+            --accent-secondary: #06b6d4;
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --border-color: rgba(255, 255, 255, 0.08);
+            
+            --tag-per-bg: rgba(59, 130, 246, 0.2);
+            --tag-per-color: #60a5fa;
+            --tag-per-border: rgba(96, 165, 250, 0.4);
+            
+            --tag-org-bg: rgba(168, 85, 247, 0.2);
+            --tag-org-color: #c084fc;
+            --tag-org-border: rgba(192, 132, 252, 0.4);
+
+            --tag-loc-bg: rgba(16, 185, 129, 0.2);
+            --tag-loc-color: #34d399;
+            --tag-loc-border: rgba(52, 211, 153, 0.4);
+
+            --tag-date-bg: rgba(245, 158, 11, 0.2);
+            --tag-date-color: #fbbf24;
+            --tag-date-border: rgba(251, 191, 36, 0.4);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            background-image: 
+                radial-gradient(circle at 15% 15%, rgba(99, 102, 241, 0.12) 0%, transparent 40%),
+                radial-gradient(circle at 85% 85%, rgba(6, 182, 212, 0.12) 0%, transparent 40%);
+            background-attachment: fixed;
+            padding-bottom: 50px;
+        }
+
+        header {
+            padding: 30px 40px;
+            border-bottom: 1px solid var(--border-color);
+            background: rgba(11, 15, 25, 0.8);
+            backdrop-filter: blur(12px);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .logo-title h1 {
+            font-size: 1.5rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #a5b4fc, #38bdf8, #818cf8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .subtitle {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+
+        .badge-pill {
+            background: rgba(99, 102, 241, 0.15);
+            color: #818cf8;
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            padding: 6px 14px;
+            border-radius: 30px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .nav-tabs {
+            display: flex;
+            gap: 12px;
+            padding: 20px 40px 0 40px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .nav-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            font-family: inherit;
+            font-size: 0.95rem;
+            font-weight: 600;
+            padding: 12px 20px;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s ease;
+        }
+
+        .nav-btn:hover {
+            color: var(--text-primary);
+        }
+
+        .nav-btn.active {
+            color: #818cf8;
+            border-bottom: 2px solid #6366f1;
+        }
+
+        main {
+            max-width: 1200px;
+            margin: 30px auto;
+            padding: 0 20px;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .grid-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+        }
+
+        @media (max-width: 900px) {
+            .grid-container {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 24px;
+            backdrop-filter: blur(16px);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        }
+
+        .card-header {
+            font-size: 1.1rem;
+            font-weight: 700;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .form-group {
+            margin-bottom: 18px;
+        }
+
+        label {
+            display: block;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        select, textarea {
+            width: 100%;
+            background: rgba(15, 21, 37, 0.8);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            color: var(--text-primary);
+            padding: 12px 16px;
+            font-family: inherit;
+            font-size: 0.95rem;
+            transition: all 0.2s ease;
+        }
+
+        select:focus, textarea:focus {
+            outline: none;
+            border-color: var(--accent-primary);
+            box-shadow: 0 0 15px var(--accent-glow);
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 120px;
+        }
+
+        .btn-primary {
+            width: 100%;
+            background: linear-gradient(135deg, #6366f1, #4f46e5);
+            color: white;
+            border: none;
+            padding: 14px;
+            border-radius: 10px;
+            font-weight: 700;
+            font-size: 1rem;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
+            transition: all 0.2s ease;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(99, 102, 241, 0.6);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .entities-container {
+            min-height: 140px;
+            background: rgba(15, 21, 37, 0.6);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 16px;
+            line-height: 1.8;
+        }
+
+        .entity-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            margin: 4px;
+            border: 1px solid transparent;
+        }
+
+        .entity-tag.PER {
+            background: var(--tag-per-bg);
+            color: var(--tag-per-color);
+            border-color: var(--tag-per-border);
+        }
+
+        .entity-tag.ORG {
+            background: var(--tag-org-bg);
+            color: var(--tag-org-color);
+            border-color: var(--tag-org-border);
+        }
+
+        .entity-tag.LOC {
+            background: var(--tag-loc-bg);
+            color: var(--tag-loc-color);
+            border-color: var(--tag-loc-border);
+        }
+
+        .entity-tag.DATE {
+            background: var(--tag-date-bg);
+            color: var(--tag-date-color);
+            border-color: var(--tag-date-border);
+        }
+
+        .entity-label {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 2px 5px;
+            border-radius: 4px;
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+            margin-top: 16px;
+        }
+
+        .metric-box {
+            background: rgba(15, 21, 37, 0.6);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 12px;
+            text-align: center;
+        }
+
+        .metric-value {
+            font-size: 1.3rem;
+            font-weight: 800;
+            color: #818cf8;
+        }
+
+        .metric-title {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-top: 2px;
+        }
+
+        .chart-card {
+            margin-top: 24px;
+        }
+
+        .paper-section {
+            line-height: 1.7;
+            color: #cbd5e1;
+        }
+
+        .paper-section h3 {
+            color: var(--text-primary);
+            margin: 20px 0 10px 0;
+        }
+
+        code {
+            font-family: 'JetBrains Mono', monospace;
+            background: rgba(255, 255, 255, 0.08);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            color: #a5b4fc;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="logo-title">
+            <h1>🏷️ Cross-Lingual Prompt-Tuned NER</h1>
+            <div class="subtitle">Indigenous & Low-Resource Indian Language Information Extraction</div>
+        </div>
+        <div class="badge-pill">Vercel Production API</div>
+    </header>
+
+    <div class="nav-tabs">
+        <button class="nav-btn active" onclick="switchTab('inference')">⚡ Live Inference</button>
+        <button class="nav-btn" onclick="switchTab('benchmarks')">📊 Zero-Shot Benchmarks</button>
+        <button class="nav-btn" onclick="switchTab('architecture')">🔬 Model Architecture</button>
+    </div>
+
+    <main>
+        <!-- TAB 1: LIVE INFERENCE -->
+        <div id="tab-inference" class="tab-content active">
+            <div class="grid-container">
+                <!-- INPUT CARD -->
+                <div class="card">
+                    <div class="card-header">
+                        <span>Input Configuration</span>
+                        <button class="btn-secondary" onclick="loadSampleText()">Load Sample Preset</button>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="lang-select">Target Language</label>
+                        <select id="lang-select">
+                            <option value="Hindi">Hindi (हिंदी)</option>
+                            <option value="Marathi">Marathi (मराठी)</option>
+                            <option value="Tamil">Tamil (தமிழ்)</option>
+                            <option value="Telugu">Telugu (తెలుగు)</option>
+                            <option value="Kannada">Kannada (<ctrl42><ctrl42>)</option>
+                            <option value="Bengali">Bengali (বাংলা)</option>
+                            <option value="Gujarati">Gujarati (ગુજરાતી)</option>
+                            <option value="Malayalam">Malayalam (മലയാളം)</option>
+                            <option value="Odia">Odia (ଓଡ଼ିଆ)</option>
+                            <option value="Punjabi">Punjabi (ਪੰਜਾਬੀ)</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="input-text">Input Sentence / Text</label>
+                        <textarea id="input-text" placeholder="Enter text in an Indian language or English...">प्रधानमंत्री नरेंद्र मोदी सोमवार को नई दिल्ली में इसरो अध्यक्ष से मिले।</textarea>
+                    </div>
+
+                    <div class="form-group" style="display: flex; align-items: center; gap: 10px;">
+                        <input type="checkbox" id="post-proc" checked style="width: auto;">
+                        <label for="post-proc" style="margin-bottom: 0;">Apply Agglutinative Suffix Normalization</label>
+                    </div>
+
+                    <button class="btn-primary" onclick="runInference()">Extract Named Entities ✨</button>
+                </div>
+
+                <!-- OUTPUT CARD -->
+                <div class="card">
+                    <div class="card-header">
+                        <span>Extracted Named Entities</span>
+                        <span id="infer-time" style="font-size: 0.8rem; color: var(--text-secondary);">0.0 ms</span>
+                    </div>
+
+                    <div id="entities-output" class="entities-container">
+                        <span style="color: var(--text-secondary);">Click "Extract Named Entities" to view extraction results.</span>
+                    </div>
+
+                    <div class="metrics-grid">
+                        <div class="metric-box">
+                            <div class="metric-value" id="count-entities">0</div>
+                            <div class="metric-title">Entities Found</div>
+                        </div>
+                        <div class="metric-box">
+                            <div class="metric-value" id="prompt-tokens">P_task + P_lang</div>
+                            <div class="metric-title">Prompt Architecture</div>
+                        </div>
+                        <div class="metric-box">
+                            <div class="metric-value" id="norm-status">NFKC Active</div>
+                            <div class="metric-title">Normalization</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 2: BENCHMARKS -->
+        <div id="tab-benchmarks" class="tab-content">
+            <div class="card">
+                <div class="card-header">
+                    <span>Zero-Shot Cross-Lingual Evaluation (F1-Score Comparison)</span>
+                    <button class="btn-secondary" onclick="loadBenchmarks()">Refresh Benchmark Data</button>
+                </div>
+                <p style="color: var(--text-secondary); margin-bottom: 20px;">
+                    Comparison of Standard Fine-Tuned Baseline vs. Disentangled Soft-Prompt Tuning ($P_{task} + P_{lang}$) across Zero-Shot target languages.
+                </p>
+
+                <div class="chart-card">
+                    <canvas id="benchmarkChart" height="120"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 3: ARCHITECTURE -->
+        <div id="tab-architecture" class="tab-content">
+            <div class="card paper-section">
+                <h2>Disentangled Soft-Prompt Architecture</h2>
+                <p>
+                    Standard fine-tuning suffers from catastrophic forgetting when transferred to low-resource languages. 
+                    Our architecture decouples prompt parameterization into two virtual token sets:
+                </p>
+
+                <h3>1. Task Anchor Prompt (<code>P_task</code>)</h3>
+                <p>
+                    Trained on high-resource source languages (e.g., Hindi) to capture invariant entity boundary logic (PER, ORG, LOC).
+                </p>
+
+                <h3>2. Language Adaptation Prompt (<code>P_lang</code>)</h3>
+                <p>
+                    Adapted in a parameter-efficient manner to encode script, agglutinative morphology, and syntactic alignment for target zero-shot languages.
+                </p>
+
+                <h3>3. Script Normalization & Agglutinative Stripping</h3>
+                <p>
+                    Preprocessor pipeline applies NFKC normalization, zero-width cleanup, and suffix stripping for agglutinative languages like Tamil, Telugu, and Kannada.
+                </p>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.nav-btn').forEach(el => el.classList.remove('active'));
+            
+            document.getElementById('tab-' + tabId).classList.add('active');
+            event.target.classList.add('active');
+
+            if (tabId === 'benchmarks' && !window.chartLoaded) {
+                loadBenchmarks();
+            }
+        }
+
+        const SAMPLE_TEXTS = {
+            "Hindi": "प्रधानमंत्री नरेंद्र मोदी सोमवार को नई दिल्ली में इसरो अध्यक्ष से मिले।",
+            "Marathi": "मुख्यमंत्री एकनाथ शिंदे यांनी मुंबई येथे टाटा ट्रस्टच्या प्रतिनिधींशी चर्चा केली.",
+            "Tamil": "சென்னை மாநகரில் இஸ்ரோ அமைப்பின் புதிய திட்டம் பற்றி அறிவிக்கப்பட்டது.",
+            "Telugu": "హైదరాబాద్ పట్టణంలో రతన్ టాటా మరియు సీఎం కలుసుకున్నారు.",
+            "Kannada": "ಬೆಂಗಳೂರು ನಗರದಲ್ಲಿ ಹೊಸ ತಂತ್ರಜ್ಞಾನ ಕೇಂದ್ರ ಸ್ಥಾಪಿಸಲಾಯಿತು."
+        };
+
+        function loadSampleText() {
+            const lang = document.getElementById('lang-select').value;
+            document.getElementById('input-text').value = SAMPLE_TEXTS[lang] || SAMPLE_TEXTS["Hindi"];
+        }
+
+        async function runInference() {
+            const text = document.getElementById('input-text').value;
+            const lang = document.getElementById('lang-select').value;
+            const postProc = document.getElementById('post-proc').checked;
+
+            const outputDiv = document.getElementById('entities-output');
+            outputDiv.innerHTML = '<span style="color: var(--text-secondary);">Analyzing text...</span>';
+
+            try {
+                const res = await fetch('/api/predict', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text, language: lang, use_post_processing: postProc })
+                });
+
+                const data = await res.json();
+
+                document.getElementById('infer-time').innerText = `${data.inference_time_ms} ms`;
+                document.getElementById('count-entities').innerText = data.entity_count;
+
+                if (!data.entities || data.entities.length === 0) {
+                    outputDiv.innerHTML = '<span style="color: var(--text-secondary);">No named entities detected in input text.</span>';
+                    return;
+                }
+
+                let html = '';
+                data.entities.forEach(ent => {
+                    html += `
+                        <span class="entity-tag ${ent.label}">
+                            ${ent.text}
+                            <span class="entity-label">${ent.label} | ${(ent.confidence * 100).toFixed(0)}%</span>
+                        </span>
+                    `;
+                });
+
+                outputDiv.innerHTML = html;
+
+            } catch (err) {
+                outputDiv.innerHTML = `<span style="color: #ef4444;">Error running prediction: ${err.message}</span>`;
+            }
+        }
+
+        async function loadBenchmarks() {
+            try {
+                const res = await fetch('/api/benchmark', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ target_languages: ["Marathi", "Tamil", "Telugu", "Kannada", "Bengali"] })
+                });
+
+                const data = await res.json();
+                const records = data.benchmark_data;
+
+                const labels = records.map(r => r.Language);
+                const baselineF1 = records.map(r => (r.Baseline_F1 * 100).toFixed(1));
+                const promptF1 = records.map(r => (r.PromptTuned_F1 * 100).toFixed(1));
+
+                const ctx = document.getElementById('benchmarkChart').getContext('2d');
+                if (window.myChart) window.myChart.destroy();
+
+                window.myChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [
+                            {
+                                label: 'Standard Fine-Tuned Baseline (F1 %)',
+                                data: baselineF1,
+                                backgroundColor: 'rgba(148, 163, 184, 0.4)',
+                                borderColor: 'rgba(148, 163, 184, 0.8)',
+                                borderWidth: 1
+                            },
+                            {
+                                label: 'Disentangled Prompt-Tuned Model (F1 %)',
+                                data: promptF1,
+                                backgroundColor: 'rgba(99, 102, 241, 0.7)',
+                                borderColor: 'rgba(99, 102, 241, 1)',
+                                borderWidth: 1
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                max: 100,
+                                grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                                ticks: { color: '#94a3b8' }
+                            },
+                            x: {
+                                grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                                ticks: { color: '#94a3b8' }
+                            }
+                        },
+                        plugins: {
+                            legend: { labels: { color: '#f8fafc' } }
+                        }
+                    }
+                });
+
+                window.chartLoaded = true;
+
+            } catch (err) {
+                console.error("Failed to load benchmarks:", err);
+            }
+        }
+    </script>
+</body>
+</html>
