@@ -1,51 +1,10 @@
-# Byte-compiled / optimized / DLL files
+# Byte-compiled / Python cache
 __pycache__/
 *.py[cod]
 *$py.class
-
-# C extensions
 *.so
-
-# Distribution / packaging
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
-
-# PyInstaller
-*.manifest
-*.spec
-
-# Installer logs
-pip-log.txt
-pip-delete-this-directory.txt
-
-# Unit test / coverage reports
-htmlcov/
-.tox/
-.nox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-*.py.qual
 .pytest_cache/
+*.cache
 
 # Environments
 .env
@@ -53,17 +12,27 @@ coverage.xml
 env/
 venv/
 ENV/
-env.bak/
-venv.bak/
 
-# IDE & Editors
+# Development, Scratch & Temporary artifacts
+scratch/
+temp/
+*.log
+test_*.png
+downloaded_*.ipynb
+.system_generated/
+mpl_cache/
+
+# Distribution & Build
+build/
+dist/
+*.egg-info/
+
+# IDE / System
 .vscode/
 .idea/
-*.swp
-*.swo
 .DS_Store
+Thumbs.db
 
-# Personal & Research documents
+# Large raw model weights & non-essential PDFs
 *.pdf
 Research_Paper_Cross_Lingual_Prompt_Tuned_NER.md
-
